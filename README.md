@@ -1,4 +1,4 @@
-# Sentiment Analysis Deep Learning
+# Sentiment Analysis
 
 ## Dataset
 sentiment140: http://help.sentiment140.com/for-students (1600000 tweets)
