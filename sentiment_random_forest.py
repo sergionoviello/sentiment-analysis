@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 import re
 import pickle
-import csv
 
 import nltk.data
 from nltk.corpus import stopwords
@@ -10,7 +9,7 @@ from nltk.stem.porter import PorterStemmer
 
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import GridSearchCV
-from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_extraction.text import CountVectorizer
 
 from text_preprocessor import TextPreprocessor
@@ -22,6 +21,9 @@ class SentimentAnalysisLogReg:
     self.dftest = self.read_brand_test_data()
     # self.dftest = self.read_data(filename='data/testdata.manual.2009.06.14.csv', limit=22000)
     self.vect = None
+
+  def is_not_ascii(self, string):
+    return string is not None and any([ord(s) >= 128 for s in string])
 
   def build_train_model(self):
     self.clean_text(self.df)
@@ -38,9 +40,6 @@ class SentimentAnalysisLogReg:
     preds = self.predict(X_test, Y_test)
     self.evaluate_test(X_test, Y_test)
     return preds
-
-  def is_not_ascii(self, string):
-    return string is not None and any([ord(s) >= 128 for s in string])
 
   def read_data(self, filename,  limit=None):
     columns=['label', 'id', 'created_at', 'query', 'user', 'text']
@@ -60,7 +59,6 @@ class SentimentAnalysisLogReg:
     df = df.rename(columns={'Snippet': 'text', 'Sentiment': 'label'})
     df = df[df.label != 'neutral']
     df['label'] = df['label'].apply(lambda x: 0 if x == 'negative' else 4)
-
     return df
 
   def clean_text(self, df):
@@ -75,15 +73,27 @@ class SentimentAnalysisLogReg:
     return X
 
   def build_model(self, X_train, Y_train):
-    param_grid = {'C': [0.001, 0.01, 0.1, 1, 10]}
-    grid = GridSearchCV(LogisticRegression(solver='liblinear'), param_grid, cv=5)
+    # param_grid = {
+    #     'n_estimators': [200, 500, 1000],
+    #     'max_features': ['auto', 'sqrt', 'log2'],
+    #     'max_depth' : [4,5,6,7,8],
+    #     'criterion' :['gini', 'entropy']
+    # }
+    best_param_grid = {
+        'n_estimators': [1000],
+        'max_features': ['log2'],
+        'max_depth' : [8],
+        'criterion' :['entropy']
+    }
+    rfc = RandomForestClassifier(random_state=42)
+    grid = GridSearchCV(rfc, best_param_grid, cv=5)
     grid.fit(X_train, Y_train)
 
     return grid
 
   def evaluate_train(self):
     print("Score val set: {:.2f}".format(self.model.best_score_))
-    # print("Best parameters: ", self.model.best_params_)
+    print("Best parameters: ", self.model.best_params_)
     # print("Best estimator: ", self.model.best_estimator_)
 
   def evaluate_test(self, X_test, Y_test):

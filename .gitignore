@@ -17,3 +17,4 @@ sentiment_cnn.ipynb
 *.png
 saved_models
 NOTES.md
+__pycache__/

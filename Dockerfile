@@ -32,4 +32,5 @@ EXPOSE 8888
 COPY . /app
 WORKDIR /app
 
-ENTRYPOINT ["jupyter", "notebook", "--ip=0.0.0.0", "--allow-root", "--NotebookApp.token=''"]
+# ENTRYPOINT ["jupyter", "notebook", "--ip=0.0.0.0", "--allow-root", "--NotebookApp.token=''"]
+ENTRYPOINT ["/bin/bash"]
