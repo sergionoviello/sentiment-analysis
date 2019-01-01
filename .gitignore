@@ -18,3 +18,4 @@ sentiment_cnn.ipynb
 saved_models
 NOTES.md
 __pycache__/
+.vscode/

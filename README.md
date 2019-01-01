@@ -10,10 +10,13 @@ docker build -t sentiment-analysis .
 
 ## Run
 ```
-docker run --rm -v $(pwd):/app -v $(pwd)/data:/app/data -it --network dev-pg sentiment-analysis
+docker run --rm -v $(pwd):/app -v $(pwd)/data:/app/data -it --network syfl-net sentiment-analysis
 ```
 
 ## Sentiment analysis with logistic regressions
 ```
-python3 sentiment_logistic_regression.py
+pre process train dataframe : python3 text_preprocessor.py
+
+python3 sentiment_logistic_regression.py train
+python3 sentiment_logistic_regression.py test
 ```

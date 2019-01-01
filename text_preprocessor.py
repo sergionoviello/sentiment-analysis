@@ -3,6 +3,10 @@ from nltk.corpus import stopwords
 from nltk.stem.porter import PorterStemmer
 import csv
 import re
+import sys
+from tqdm import tqdm
+
+from helpers import read_data
 
 class TextPreprocessor:
   def __init__(self):
@@ -74,7 +78,14 @@ class TextPreprocessor:
     "aaaaand": "and"
     }
 
-  def pre_process(self, text):
+  def pre_process_docs(self, train_df, out_filename = 'train_pre_processed'):
+    print('preprocessing train data...')
+    tqdm.pandas()
+    df['clean_text'] = df['text'].progress_apply(self.pre_process_text)
+    df['label'] = df['label'].replace(4,1)
+    df.to_csv("data/{}.csv".format(out_filename))
+
+  def pre_process_text(self, text):
     stops = set(stopwords.words("english"))
     text = text.lower() # lower case
     text = ' '.join(re.sub("(@[A-Za-z0-9]+)|([^0-9A-Za-z \t])|(\w+:\/\/\S+)"," ",text).split()) # remove links urls
@@ -123,3 +134,21 @@ class TextPreprocessor:
         j = j + 1
     # Replacing commas with spaces for final output.
     return ' '.join(user_string)
+
+
+'''
+  --------------------------------------------------
+  MAIN
+  --------------------------------------------------
+'''
+
+if len(sys.argv) == 1:
+  print("task name is required. USAGE: python3 sentiment_logistic_regression.py <task>")
+elif sys.argv[1] == 'preprocess':
+  df = read_data(filename='data/training.1600000.processed.noemoticon.csv', limit=300)
+  text_processor = TextPreprocessor()
+  text_processor.pre_process_docs(df, 'preprocess_lol')
+
+
+
+    
