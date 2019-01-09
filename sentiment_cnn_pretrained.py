@@ -3,6 +3,7 @@ import pandas as pd
 import pickle
 import sys
 from tqdm import tqdm
+import nltk
 
 from keras.models import Model, Sequential
 from keras.layers import Input, Dense, Flatten, Conv1D, MaxPooling1D, Dropout, LSTM
@@ -132,12 +133,16 @@ class SentimentAnalysisCnn:
     return x_train
 
   def read_brand_test_data(self, test_filename):
+
     df = pd.read_csv(test_filename)
+    df2 = pd.read_csv('data/minnesota_test2.csv')
+
+    df = df.append(df2, ignore_index=True)
     df = df[~df['Sentiment'].apply(self.is_not_ascii)]
     df = df.rename(columns={'Snippet': 'text', 'Sentiment': 'label'})
     df = df[df.label != 'neutral']
     df['label'] = df['label'].apply(lambda x: 0 if x == 'negative' else 4)
-
+    print(df.shape)
     return df
 
   def load_pretrained_model(self):
@@ -161,6 +166,9 @@ class SentimentAnalysisCnn:
     print('predict...')
     preds = model.predict(X_test)
     y_preds = [self.prob_to_sentiment_label(pred) for pred in preds]
+
+    self.dftest['pred'] = y_preds
+    self.dftest.to_csv('data/predictions.csv')
 
     print(classification_report(y_test, y_preds))
 
@@ -187,6 +195,25 @@ class SentimentAnalysisCnn:
   def is_not_ascii(self, string):
     return string is not None and any([ord(s) >= 128 for s in string])
 
+  def preds(self):
+    df = pd.read_csv('data/predictions.csv')
+    correct = 0
+    incorrect = 0
+
+    for i, row in df.iterrows():
+      if (row['label'] == row['pred']):
+        correct += 1
+      else:
+        incorrect += 1
+    print('correct', correct)
+    print('incorrect', incorrect)
+
+    print(correct / df.shape[0])
+
+
+nltk.download('punkt')
+nltk.download('stopwords')
+
 '''
   --------------------------------------------------
   MAIN
@@ -202,8 +229,10 @@ elif sys.argv[1] == 'test':
   analyzer = SentimentAnalysisCnn()
   model = analyzer.load_pretrained_model()
   preds = analyzer.predict(model)
-
 elif sys.argv[1] == 'debug':
   analyzer = SentimentAnalysisCnn()
   model = analyzer.load_pretrained_model()
   analyzer.predict_single_text(model, "I hate this movie")
+elif sys.argv[1] == 'preds':
+  analyzer = SentimentAnalysisCnn()
+  analyzer.preds()
