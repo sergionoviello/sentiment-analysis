@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 import pickle
+import sys
+from tqdm import tqdm
 
 from keras.models import Model, Sequential
 from keras.layers import Input, Dense, Flatten, Conv1D, MaxPooling1D, Dropout, LSTM
@@ -11,6 +13,11 @@ from keras.preprocessing.text import Tokenizer
 from keras.layers.embeddings import Embedding
 from keras.utils import np_utils
 from sklearn.model_selection import train_test_split
+from keras.models import load_model
+
+from text_preprocessor import TextPreprocessor
+
+from sklearn.metrics import confusion_matrix, classification_report
 
 VECTORIZER_FILE = 'vect_cnn_pretrained.pkl'
 MODEL_FILE = 'sentiment_cnn_pretrained.hdf5'
@@ -20,7 +27,7 @@ GLOVE = 'glove.twitter.27B.100d.txt'
 EPOCHS = 10
 BATCH_SIZE= 1024
 
-NB_WORDS = 30000# 222697
+NB_WORDS = 30000 # 222697 unique words
 MAX_LEN = 50
 EMBED_DIMS = 100
 
@@ -30,7 +37,7 @@ class SentimentAnalysisCnn:
     self.df = pd.read_csv(train_filename, header=None, names=columns, encoding = "ISO-8859-1")
     self.df = self.df[pd.notnull(self.df['clean_text'])]
 
-    # self.dftest = self.read_brand_test_data(test_filename)
+    self.dftest = self.read_brand_test_data(test_filename)
     self.vect = None
     self.vocab_size = NB_WORDS
 
@@ -117,24 +124,67 @@ class SentimentAnalysisCnn:
     print('Found %d unique words.' % len(self.tokenizer.word_index))
 
     x_train = pad_sequences(sequences, maxlen=max_len)
+
+    with open("saved_models/{}".format(VECTORIZER_FILE), 'wb') as handle:
+      pickle.dump(self.tokenizer, handle, protocol = pickle.HIGHEST_PROTOCOL)
+      print ('tokenizer saved')
+
     return x_train
 
-  # def tokenize(self):
-  #   #self.df['max_len'] = self.df['clean_text'].apply(lambda x: len(x))
-  #   #max_len = self.df['max_len'].max()
-  #   max_len = MAX_LEN
+  def read_brand_test_data(self, test_filename):
+    df = pd.read_csv(test_filename)
+    df = df[~df['Sentiment'].apply(self.is_not_ascii)]
+    df = df.rename(columns={'Snippet': 'text', 'Sentiment': 'label'})
+    df = df[df.label != 'neutral']
+    df['label'] = df['label'].apply(lambda x: 0 if x == 'negative' else 4)
 
-  #   tokenizer = Tokenizer(num_words=self.max_fatures)
-  #   tokenizer.fit_on_texts(self.df['clean_text'].values)
-  #   sequences = tokenizer.texts_to_sequences(self.df['clean_text'].values)
-  #   x_train_seq = pad_sequences(sequences, maxlen=max_len)
-  #   print('Found %d unique words.' % len(tokenizer.word_index))
+    return df
 
-  #   with open(VECTORIZER_FILE, 'wb') as handle:
-  #     pickle.dump(tokenizer, handle, protocol = pickle.HIGHEST_PROTOCOL)
-  #     print ('tokenizer saved')
+  def load_pretrained_model(self):
+    self.model = load_model("saved_models/{}".format(MODEL_FILE))
+    with open("saved_models/{}".format(VECTORIZER_FILE), 'rb') as f2:
+      self.vect = pickle.load(f2)
+    return self.model
 
-  #   return x_train_seq, max_len
+  def predict(self, model):
+    tqdm.pandas()
+    print('preprocessing test data...')
+    tp = TextPreprocessor()
+    self.dftest['clean_text'] = self.dftest['text'].progress_apply(tp.pre_process_text_no_stemming)
+    self.dftest['label'] = self.dftest['label'].replace(4,1)
 
-analyzer = SentimentAnalysisCnn()
-analyzer.train()
+    print('word embeddings test data...')
+    sequences = self.vect.texts_to_sequences(self.dftest['clean_text'].values)
+
+    X_test = pad_sequences(sequences, maxlen=MAX_LEN)
+    y_test = self.dftest['label'].values
+    print('predict...')
+    preds = model.predict(X_test)
+    y_preds = [np.argmax(pred) for pred in preds]
+
+    print(classification_report(y_test, y_preds))
+
+    score,acc = model.evaluate(X_test, np_utils.to_categorical(self.dftest['label'].values), verbose = 2, batch_size = 128)
+    print("score: %.2f" % (score))
+    print("acc: %.2f" % (acc))
+
+    return y_preds
+
+  def is_not_ascii(self, string):
+    return string is not None and any([ord(s) >= 128 for s in string])
+
+'''
+  --------------------------------------------------
+  MAIN
+  --------------------------------------------------
+'''
+
+if len(sys.argv) == 1:
+  print("task name is required. USAGE: python3 <filename> <task>")
+elif sys.argv[1] == 'train':
+  analyzer = SentimentAnalysisCnn()
+  analyzer.train()
+elif sys.argv[1] == 'test':
+  analyzer = SentimentAnalysisCnn()
+  model = analyzer.load_pretrained_model()
+  preds = analyzer.predict(model)
