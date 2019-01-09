@@ -5,8 +5,9 @@ import csv
 import re
 import sys
 from tqdm import tqdm
-
-from helpers import read_data
+import pandas as pd
+import numpy as np
+# from helpers import read_data
 
 class TextPreprocessor:
   def __init__(self):
@@ -78,12 +79,21 @@ class TextPreprocessor:
     "aaaaand": "and"
     }
 
-  def pre_process_docs(self, train_df, out_filename = 'train_pre_processed'):
+
+  def pre_process_docs(self, train_file, output_file, with_stemming=True):
+    columns=['label', 'id', 'created_at', 'query', 'user', 'text']
+    df = pd.read_csv("data/{}".format(train_file), header=None, names=columns, encoding = "ISO-8859-1")
+
     print('preprocessing train data...')
     tqdm.pandas()
-    df['clean_text'] = df['text'].progress_apply(self.pre_process_text)
+    if with_stemming:
+      df['clean_text'] = df['text'].progress_apply(self.pre_process_text)
+    else:
+      df['clean_text'] = df['text'].progress_apply(self.pre_process_text_no_stemming)
+
     df['label'] = df['label'].replace(4,1)
-    df.to_csv("data/{}.csv".format(out_filename))
+    df.to_csv("data/{}".format(output_file), header=False)
+
 
   def pre_process_text(self, text):
     stops = set(stopwords.words("english"))
@@ -109,6 +119,24 @@ class TextPreprocessor:
     #stemming
     ps = PorterStemmer()
     words = [ps.stem(w) for w in words]
+
+    return ' '.join(words)
+
+  def pre_process_text_no_stemming(self, text):
+    stops = set(stopwords.words("english"))
+    text = text.lower() # lower case
+    text = ' '.join(re.sub("(@[A-Za-z0-9]+)|([^0-9A-Za-z \t])|(\w+:\/\/\S+)"," ",text).split()) # remove links urls
+
+    # convert arent' to are not
+    words = text.split()
+    reformed = [self.appos[word] if word in self.appos else word for word in words]
+    reformed = " ".join(reformed)
+
+    #remove punctuation
+    tokens = nltk.word_tokenize(reformed)
+    words = [word for word in tokens if word.isalpha()]
+    #remove stop words
+    words = [w for w in words if not w in stops]
 
     return ' '.join(words)
 
@@ -142,13 +170,14 @@ class TextPreprocessor:
   --------------------------------------------------
 '''
 
-if len(sys.argv) == 1:
-  print("task name is required. USAGE: python3 sentiment_logistic_regression.py <task>")
+TRAIN_FILE = 'training.1600000.processed.noemoticon.csv'
+
+if len(sys.argv) < 2:
+  print("task name is required. USAGE: python3 text_preprocessor.py <task>")
 elif sys.argv[1] == 'preprocess':
-  df = read_data(filename='data/training.1600000.processed.noemoticon.csv', limit=300)
+  nltk.download('punkt')
+  nltk.download('stopwords')
+
   text_processor = TextPreprocessor()
-  text_processor.pre_process_docs(df, 'preprocess_lol')
-
-
-
-    
+  # text_processor.pre_process_docs(TRAIN_FILE, 'full_preprocessed.csv')
+  text_processor.pre_process_docs(TRAIN_FILE, 'full_no_stem_preprocessed.csv', False)

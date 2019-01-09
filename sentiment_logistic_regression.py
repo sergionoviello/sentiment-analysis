@@ -13,8 +13,8 @@ from nltk.stem.porter import PorterStemmer
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import GridSearchCV
 from sklearn.linear_model import LogisticRegression
-from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.feature_extraction.text import TfidfTransformer
+from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
+
 from sklearn.metrics import confusion_matrix, classification_report
 
 from text_preprocessor import TextPreprocessor
@@ -22,13 +22,15 @@ from text_preprocessor import TextPreprocessor
 VECTORIZER_FILE = 'vect.pkl'
 MODEL_FILE = 'sentiment_logistic_regression.pkl'
 
-class SentimentAnalysisLogReg: 
-  def __init__(self, train_filename='data/train_pre_processed.csv', test_filename='data/minnesota_test.csv'):
-    self.df = pd.read_csv(train_filename, encoding = "ISO-8859-1")
-    self.df = self.df[pd.notnull(self.df['clean_text'])]
-    
+class SentimentAnalysisLogReg:
+
+  def __init__(self, train_filename='data/full_preprocessed.csv', test_filename='data/minnesota_test.csv'):
+
+    columns=['label', 'id', 'created_at', 'query', 'user', 'text', 'clean_text']
+    self.df = pd.read_csv(train_filename, header=None, names=columns, encoding = "ISO-8859-1")
+    self.df = self.df[(self.df['clean_text'] != '') & (self.df['clean_text'].notnull())]
     self.dftest = self.read_brand_test_data(test_filename)
-    # self.dftest = self.read_data(filename='data/testdata.manual.2009.06.14.csv', limit=22000)
+    # # self.dftest = self.read_data(filename='data/testdata.manual.2009.06.14.csv', limit=22000)
     self.vect = None
 
   def load_model(self):
@@ -36,7 +38,7 @@ class SentimentAnalysisLogReg:
       self.model = pickle.load(fid)
     with open("saved_models/{}".format(VECTORIZER_FILE), 'rb') as f2:
       self.vect = pickle.load(f2)
-    return self.model 
+    return self.model
 
   def train_model(self):
     print('bag of words...')
@@ -57,7 +59,7 @@ class SentimentAnalysisLogReg:
   def predict(self, model):
     tqdm.pandas()
     print('preprocessing test data...')
-    tp = TextPreprocessor() 
+    tp = TextPreprocessor()
     self.dftest['clean_text'] = self.dftest['text'].progress_apply(tp.pre_process_text)
     self.dftest['label'] = self.dftest['label'].replace(4,1)
 
@@ -82,19 +84,22 @@ class SentimentAnalysisLogReg:
     return df
 
   def bag_of_words(self, min_df=1, ngrams=(1, 1)):
-    X = self.df['clean_text']
+    X = self.df['clean_text'].values
 
-    self.vect = CountVectorizer(min_df=min_df, ngram_range=ngrams, analyzer='word')
-    bow_transformer = self.vect.fit(X)
-    X = bow_transformer.transform(X)
+    self.vect = TfidfVectorizer(min_df=min_df, ngram_range=ngrams, analyzer='word')
+    X = self.vect.fit_transform(X)
 
-    tfidf_transformer = TfidfTransformer()
-    X_train_tfidf = tfidf_transformer.fit_transform(X)
+    # self.vect = CountVectorizer(min_df=min_df, ngram_range=ngrams, analyzer='word')
+    # bow_transformer = self.vect.fit(X)
+    # X = bow_transformer.transform(X)
+
+    # tfidf_transformer = TfidfTransformer()
+    # X_train_tfidf = tfidf_transformer.fit_transform(X)
 
     with open("saved_models/{}".format(VECTORIZER_FILE), 'wb') as fid:
       pickle.dump(self.vect, fid)
 
-    return X_train_tfidf
+    return X
 
   def build_model(self, X_train, Y_train):
     param_grid = {'C': [0.001, 0.01, 0.1, 1, 10]}
@@ -129,9 +134,9 @@ nltk.download('stopwords')
 if len(sys.argv) == 1:
   print("task name is required. USAGE: python3 sentiment_logistic_regression.py <task>")
 elif sys.argv[1] == 'train':
-  analyzer = SentimentAnalysisLogReg(train_filename='data/train_pre_processed.csv', test_filename='data/minnesota_test.csv')
+  analyzer = SentimentAnalysisLogReg(train_filename='data/full_preprocessed.csv', test_filename='data/minnesota_test.csv')
   analyzer.train_model()
 elif sys.argv[1] == 'test':
-  analyzer = SentimentAnalysisLogReg(train_filename='data/train_pre_processed.csv', test_filename='data/minnesota_test.csv')
+  analyzer = SentimentAnalysisLogReg(train_filename='data/full_preprocessed.csv', test_filename='data/minnesota_test.csv')
   model = analyzer.load_model()
   preds = analyzer.predict(model)
