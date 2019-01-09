@@ -160,7 +160,7 @@ class SentimentAnalysisCnn:
     y_test = self.dftest['label'].values
     print('predict...')
     preds = model.predict(X_test)
-    y_preds = [np.argmax(pred) for pred in preds]
+    y_preds = [self.prob_to_sentiment_label(pred) for pred in preds]
 
     print(classification_report(y_test, y_preds))
 
@@ -169,6 +169,20 @@ class SentimentAnalysisCnn:
     print("acc: %.2f" % (acc))
 
     return y_preds
+
+  def predict_single_text(self, model, text):
+    sequences = self.vect.texts_to_sequences([text])
+    X_test = pad_sequences(sequences, maxlen=MAX_LEN)
+    print('predict...')
+    pred = model.predict(X_test)[0]
+    print(self.decode_sentiment(pred))
+
+  def prob_to_sentiment_label(self, pred):
+    THRESHOLD = .4
+    return 0 if pred[0] > THRESHOLD else 1
+
+  def decode_sentiment(self, pred):
+    return 'POSITIVE' if self.prob_to_sentiment_label(pred) == 1 else 'NEGATIVE'
 
   def is_not_ascii(self, string):
     return string is not None and any([ord(s) >= 128 for s in string])
@@ -188,3 +202,8 @@ elif sys.argv[1] == 'test':
   analyzer = SentimentAnalysisCnn()
   model = analyzer.load_pretrained_model()
   preds = analyzer.predict(model)
+
+elif sys.argv[1] == 'debug':
+  analyzer = SentimentAnalysisCnn()
+  model = analyzer.load_pretrained_model()
+  analyzer.predict_single_text(model, "I hate this movie")
