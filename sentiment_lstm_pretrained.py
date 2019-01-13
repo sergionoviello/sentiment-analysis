@@ -19,38 +19,35 @@ from keras.models import load_model
 from text_preprocessor import TextPreprocessor
 
 from sklearn.metrics import confusion_matrix, classification_report
+from keras import optimizers
 
-VECTORIZER_FILE = 'vect_cnn_pretrained.pkl'
-MODEL_FILE = 'sentiment_cnn_pretrained.hdf5'
-CHECKPOINT_FILE = 'sentiment_cnn_weights_pretrained.hdf5'
+VECTORIZER_FILE = 'vect_lstm_pretrained_lr.pkl'
+MODEL_FILE = 'sentiment_lstm_pretrained_lr.hdf5'
+CHECKPOINT_FILE = 'sentiment_lstm_weights_pretrained_lr.hdf5'
 GLOVE = 'glove.twitter.27B.100d.txt'
 
 EPOCHS = 10
-BATCH_SIZE= 1024
-
-NB_WORDS = 30000 # 222697 unique words
-MAX_LEN = 50
+BATCH_SIZE= 128
 EMBED_DIMS = 100
 
-class SentimentAnalysisCnn:
-  def __init__(self, train_filename='data/full_no_stem_preprocessed.csv', test_filename='data/minnesota_test.csv'):
+MAX_LEN = 60
+
+class SentimentAnalysisLstm:
+  def __init__(self, train_filename='data/full_no_stem_preprocessed.csv', test_filename='data/minnesota_test.csv', is_brand=True):
     columns=['label', 'id', 'created_at', 'query', 'user', 'text', 'clean_text']
     self.df = pd.read_csv(train_filename, header=None, names=columns, encoding = "ISO-8859-1")
     self.df = self.df[pd.notnull(self.df['clean_text'])]
+    self.df['max_len'] = self.df['clean_text'].apply(lambda x: len(x))
+    self.max_len = 60 # self.df['max_len'].max() + 1 ## requires more memory
+    print('max sentence length', self.df['max_len'].max())
 
-    self.dftest = self.read_brand_test_data(test_filename)
+    self.dftest = self.read_brand_test_data(test_filename, is_brand)
     self.vect = None
-    self.vocab_size = NB_WORDS
 
   def train(self):
     filepath="saved_models/{}".format(CHECKPOINT_FILE)
 
-    self.df['max_len'] = self.df['clean_text'].apply(lambda x: len(x))
-    print('max sentence length', self.df['max_len'].max())
-    print('avg sentence el', self.df['max_len'].mean())
-    max_len = MAX_LEN
-
-    X = self.word_embeddings(self.df['clean_text'].values, max_len)
+    X = self.word_embeddings(self.df['clean_text'].values, self.max_len)
     y = np_utils.to_categorical(self.df['label'].values)
 
     X_train, X_val, Y_train, Y_val = train_test_split(X,y, test_size = 0.3, random_state = 42)
@@ -58,7 +55,7 @@ class SentimentAnalysisCnn:
     self.embed_dict = self.create_word_embeddings_dict()
     self.embed_matrix = self.create_word_embeddings_matrix(self.embed_dict)
 
-    model = self.build_model(max_len)
+    model = self.build_model(self.max_len)
 
     checkpoint = ModelCheckpoint(filepath, monitor='val_acc', verbose=1, save_best_only=True, mode='max')
 
@@ -75,20 +72,13 @@ class SentimentAnalysisCnn:
     model = Sequential()
     model.add(Embedding(self.vocab_size, EMBED_DIMS, input_length=max_len, weights=[self.embed_matrix], trainable=False))
 
-    #model.add(Conv1D(filters=100, kernel_size=2, padding='valid', strides=1, activation='relu'))
-    #model.add(MaxPooling1D(pool_size=2))
-#    model.add(Dropout(0.2))
-
-    model.add(Dropout(0.5))
+    #model.add(Dropout(0.5))
     model.add(LSTM(100, dropout=0.2, recurrent_dropout=0.2))
-
-    #model.add(Flatten())
     model.add(Dense(2,activation='softmax'))
 
-    # model.layers[0].set_weights([self.embed_matrix])
-    # model.layers[0].trainable = False
-
-    model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+    # adam default parameters:  lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0.
+    adam = optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
+    model.compile(loss='categorical_crossentropy', optimizer=adam, metrics=['accuracy'])
     model.summary()
     return model
 
@@ -132,17 +122,21 @@ class SentimentAnalysisCnn:
 
     return x_train
 
-  def read_brand_test_data(self, test_filename):
+  def read_brand_test_data(self, test_filename, is_brand=True):
 
-    df = pd.read_csv(test_filename)
-    df2 = pd.read_csv('data/minnesota_test2.csv')
+    if is_brand:
+      df = pd.read_csv(test_filename)
+      df2 = pd.read_csv('data/minnesota_test2.csv')
+      df = df.append(df2, ignore_index=True, sort=True)
+      df = df[~df['Sentiment'].apply(self.is_not_ascii)]
+      df = df.rename(columns={'Snippet': 'text', 'Sentiment': 'label'})
+      df = df[df.label != 'neutral']
+      df['label'] = df['label'].apply(lambda x: 0 if x == 'negative' else 4)
+    else:
+      columns=['label', 'id', 'created_at', 'query', 'user', 'text']
+      df = pd.read_csv(test_filename, header=None, names=columns)
+      df = df[(df.label == 4) | (df.label == 0)]
 
-    df = df.append(df2, ignore_index=True)
-    df = df[~df['Sentiment'].apply(self.is_not_ascii)]
-    df = df.rename(columns={'Snippet': 'text', 'Sentiment': 'label'})
-    df = df[df.label != 'neutral']
-    df['label'] = df['label'].apply(lambda x: 0 if x == 'negative' else 4)
-    print(df.shape)
     return df
 
   def load_pretrained_model(self):
@@ -161,7 +155,7 @@ class SentimentAnalysisCnn:
     print('word embeddings test data...')
     sequences = self.vect.texts_to_sequences(self.dftest['clean_text'].values)
 
-    X_test = pad_sequences(sequences, maxlen=MAX_LEN)
+    X_test = pad_sequences(sequences, maxlen=self.max_len)
     y_test = self.dftest['label'].values
     print('predict...')
     preds = model.predict(X_test)
@@ -180,7 +174,7 @@ class SentimentAnalysisCnn:
 
   def predict_single_text(self, model, text):
     sequences = self.vect.texts_to_sequences([text])
-    X_test = pad_sequences(sequences, maxlen=MAX_LEN)
+    X_test = pad_sequences(sequences, maxlen=self.max_len)
     print('predict...')
     pred = model.predict(X_test)[0]
     print(self.decode_sentiment(pred))
@@ -223,16 +217,16 @@ nltk.download('stopwords')
 if len(sys.argv) == 1:
   print("task name is required. USAGE: python3 <filename> <task>")
 elif sys.argv[1] == 'train':
-  analyzer = SentimentAnalysisCnn()
+  analyzer = SentimentAnalysisLstm()
   analyzer.train()
 elif sys.argv[1] == 'test':
-  analyzer = SentimentAnalysisCnn()
+  analyzer = SentimentAnalysisLstm(train_filename='data/full_no_stem_preprocessed.csv', test_filename='data/testdata.manual.2009.06.14.csv', is_brand=False)
   model = analyzer.load_pretrained_model()
   preds = analyzer.predict(model)
 elif sys.argv[1] == 'debug':
-  analyzer = SentimentAnalysisCnn()
+  analyzer = SentimentAnalysisLstm()
   model = analyzer.load_pretrained_model()
   analyzer.predict_single_text(model, "I hate this movie")
 elif sys.argv[1] == 'preds':
-  analyzer = SentimentAnalysisCnn()
+  analyzer = SentimentAnalysisLstm()
   analyzer.preds()
