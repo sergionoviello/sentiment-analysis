@@ -21,9 +21,9 @@ from text_preprocessor import TextPreprocessor
 from sklearn.metrics import confusion_matrix, classification_report
 from keras import optimizers
 
-VECTORIZER_FILE = 'vect_lstm_pretrained_lr.pkl'
-MODEL_FILE = 'sentiment_lstm_pretrained_lr.hdf5'
-CHECKPOINT_FILE = 'sentiment_lstm_weights_pretrained_lr.hdf5'
+VECTORIZER_FILE = 'vect_lstm_pretrained_lr2.pkl'
+MODEL_FILE = 'sentiment_lstm_pretrained_lr2.hdf5'
+CHECKPOINT_FILE = 'sentiment_lstm_weights_pretrained_lr2.hdf5'
 GLOVE = 'glove.twitter.27B.100d.txt'
 
 EPOCHS = 10
@@ -33,12 +33,14 @@ EMBED_DIMS = 100
 MAX_LEN = 60
 
 class SentimentAnalysisLstm:
-  def __init__(self, train_filename='data/full_no_stem_preprocessed.csv', test_filename='data/minnesota_test.csv', is_brand=True):
-    columns=['label', 'id', 'created_at', 'query', 'user', 'text', 'clean_text']
+  def __init__(self, train_filename='data/full_preprocessed_sergio.csv', test_filename='data/minnesota_test.csv', is_brand=True):
+    columns=['id', 'Query Name', 'text', 'label', 'clean_text']
     self.df = pd.read_csv(train_filename, header=None, names=columns, encoding = "ISO-8859-1")
+
     self.df = self.df[pd.notnull(self.df['clean_text'])]
+
     self.df['max_len'] = self.df['clean_text'].apply(lambda x: len(x))
-    self.max_len = 60 # self.df['max_len'].max() + 1 ## requires more memory
+    self.max_len = 290 # self.df['max_len'].max() + 1 ## requires more memory
     print('max sentence length', self.df['max_len'].max())
 
     self.dftest = self.read_brand_test_data(test_filename, is_brand)
@@ -59,7 +61,6 @@ class SentimentAnalysisLstm:
 
     checkpoint = ModelCheckpoint(filepath, monitor='val_acc', verbose=1, save_best_only=True, mode='max')
 
-
     history = model.fit(X_train, Y_train, batch_size=BATCH_SIZE, epochs=EPOCHS, validation_data=(X_val, Y_val), callbacks = [checkpoint])
 
     model.save("saved_models/{}".format(MODEL_FILE))
@@ -74,7 +75,7 @@ class SentimentAnalysisLstm:
 
     #model.add(Dropout(0.5))
     model.add(LSTM(100, dropout=0.2, recurrent_dropout=0.2))
-    model.add(Dense(2,activation='softmax'))
+    model.add(Dense(3,activation='softmax'))
 
     # adam default parameters:  lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0.
     adam = optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
@@ -130,8 +131,11 @@ class SentimentAnalysisLstm:
       df = df.append(df2, ignore_index=True, sort=True)
       df = df[~df['Sentiment'].apply(self.is_not_ascii)]
       df = df.rename(columns={'Snippet': 'text', 'Sentiment': 'label'})
-      df = df[df.label != 'neutral']
-      df['label'] = df['label'].apply(lambda x: 0 if x == 'negative' else 4)
+
+      #df = df[df.label != 'neutral']
+      #df['label'] = df['label'].apply(lambda x: 0 if x == 'negative' else 4)
+      di = { 'positive': 2, 'neutral': 1, 'negative': 0 }
+      df["label"].replace(di, inplace=True)
     else:
       columns=['label', 'id', 'created_at', 'query', 'user', 'text']
       df = pd.read_csv(test_filename, header=None, names=columns)
@@ -150,7 +154,6 @@ class SentimentAnalysisLstm:
     print('preprocessing test data...')
     tp = TextPreprocessor()
     self.dftest['clean_text'] = self.dftest['text'].progress_apply(tp.pre_process_text_no_stemming)
-    self.dftest['label'] = self.dftest['label'].replace(4,1)
 
     print('word embeddings test data...')
     sequences = self.vect.texts_to_sequences(self.dftest['clean_text'].values)
@@ -158,13 +161,29 @@ class SentimentAnalysisLstm:
     X_test = pad_sequences(sequences, maxlen=self.max_len)
     y_test = self.dftest['label'].values
     print('predict...')
+
     preds = model.predict(X_test)
     y_preds = [self.prob_to_sentiment_label(pred) for pred in preds]
 
-    self.dftest['pred'] = y_preds
-    self.dftest.to_csv('data/predictions.csv')
+    prob_map = ['negative', 'neutral', 'positive']
 
-    print(classification_report(y_test, y_preds))
+    probs = []
+    for pred in preds:
+      di = {}
+      for i, prob in enumerate(pred):
+        di[prob_map[i]] = prob
+      probs.append(di)
+
+    ##probs = ["{}:{}".format(prob_map[i[0]], prob) for i, prob in enumerate(preds)]
+
+    self.dftest['pred'] = y_preds
+    self.dftest['prob'] = probs
+
+    submission = self.dftest[['text', 'label', 'pred', 'prob']]
+
+    submission.to_csv('data/predictions_3_categories.csv')
+
+    # print(classification_report(y_test, y_preds))
 
     score,acc = model.evaluate(X_test, np_utils.to_categorical(self.dftest['label'].values), verbose = 2, batch_size = 128)
     print("score: %.2f" % (score))
@@ -180,8 +199,10 @@ class SentimentAnalysisLstm:
     print(self.decode_sentiment(pred))
 
   def prob_to_sentiment_label(self, pred):
-    THRESHOLD = .4
-    return 0 if pred[0] > THRESHOLD else 1
+    #THRESHOLD = .4
+    #return 0 if pred[0] > THRESHOLD else 1
+
+    return np.argmax(pred)
 
   def decode_sentiment(self, pred):
     return 'POSITIVE' if self.prob_to_sentiment_label(pred) == 1 else 'NEGATIVE'
@@ -190,7 +211,8 @@ class SentimentAnalysisLstm:
     return string is not None and any([ord(s) >= 128 for s in string])
 
   def preds(self):
-    df = pd.read_csv('data/predictions.csv')
+    df = pd.read_csv('data/predictions_3_categories.csv')
+
     correct = 0
     incorrect = 0
 
@@ -220,7 +242,7 @@ elif sys.argv[1] == 'train':
   analyzer = SentimentAnalysisLstm()
   analyzer.train()
 elif sys.argv[1] == 'test':
-  analyzer = SentimentAnalysisLstm(train_filename='data/full_no_stem_preprocessed.csv', test_filename='data/testdata.manual.2009.06.14.csv', is_brand=False)
+  analyzer = SentimentAnalysisLstm(train_filename='data/full_no_stem_preprocessed.csv', test_filename='data/minnesota_test.csv', is_brand=True)
   model = analyzer.load_pretrained_model()
   preds = analyzer.predict(model)
 elif sys.argv[1] == 'debug':

@@ -81,8 +81,13 @@ class TextPreprocessor:
 
 
   def pre_process_docs(self, train_file, output_file, with_stemming=True):
-    columns=['label', 'id', 'created_at', 'query', 'user', 'text']
-    df = pd.read_csv("data/{}".format(train_file), header=None, names=columns, encoding = "ISO-8859-1")
+    #columns=['label', 'id', 'created_at', 'query', 'user', 'text']
+    #df = pd.read_csv("data/{}".format(train_file), header=None, names=columns, encoding = "ISO-8859-1")
+    df = pd.read_csv("data/{}".format(train_file), encoding = "ISO-8859-1")
+    df = df.rename(columns={'Snippet': 'text', 'Sentiment': 'label'})
+    di = { 'positive': 2, 'neutral': 1, 'negative': 0 }
+    #df['label'] = df['label'].apply(lambda x: 0 if x == 'negative' else 4)
+    df["label"].replace(di, inplace=True)
 
     print('preprocessing train data...')
     tqdm.pandas()
@@ -91,7 +96,7 @@ class TextPreprocessor:
     else:
       df['clean_text'] = df['text'].progress_apply(self.pre_process_text_no_stemming)
 
-    df['label'] = df['label'].replace(4,1)
+    # df['label'] = df['label'].replace(4,1)
     df.to_csv("data/{}".format(output_file), header=False)
 
 
@@ -170,7 +175,8 @@ class TextPreprocessor:
   --------------------------------------------------
 '''
 
-TRAIN_FILE = 'training.1600000.processed.noemoticon.csv'
+# TRAIN_FILE = 'training.1600000.processed.noemoticon.csv'
+TRAIN_FILE = 'tweets_sergio.csv'
 
 if len(sys.argv) < 2:
   print("task name is required. USAGE: python3 text_preprocessor.py <task>")
@@ -180,4 +186,4 @@ elif sys.argv[1] == 'preprocess':
 
   text_processor = TextPreprocessor()
   # text_processor.pre_process_docs(TRAIN_FILE, 'full_preprocessed.csv')
-  text_processor.pre_process_docs(TRAIN_FILE, 'full_no_stem_preprocessed.csv', False)
+  text_processor.pre_process_docs(TRAIN_FILE, 'full_preprocessed_sergio.csv', False)
