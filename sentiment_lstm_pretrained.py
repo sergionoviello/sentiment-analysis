@@ -196,7 +196,10 @@ class SentimentAnalysisLstm:
     X_test = pad_sequences(sequences, maxlen=self.max_len)
     print('predict...')
     pred = model.predict(X_test)[0]
-    print(self.decode_sentiment(pred))
+    prob_map = ['NEGATIVE', 'NEUTRAL', 'POSITIVE']
+    print('****************')
+    print(prob_map[np.argmax(pred)])
+    print('****************')
 
   def prob_to_sentiment_label(self, pred):
     #THRESHOLD = .4
@@ -248,7 +251,7 @@ elif sys.argv[1] == 'test':
 elif sys.argv[1] == 'debug':
   analyzer = SentimentAnalysisLstm()
   model = analyzer.load_pretrained_model()
-  analyzer.predict_single_text(model, "I hate this movie")
+  analyzer.predict_single_text(model, "The sun is shining, everything is beautiful and I'm happy")
 elif sys.argv[1] == 'preds':
   analyzer = SentimentAnalysisLstm()
   analyzer.preds()
