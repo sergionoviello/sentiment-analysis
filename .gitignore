@@ -19,3 +19,4 @@ saved_models
 NOTES.md
 __pycache__/
 .vscode/
+._.DS_Store

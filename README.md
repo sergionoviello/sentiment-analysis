@@ -10,7 +10,7 @@ docker build -t sentiment-analysis .
 
 ## Run
 ```
-docker run --rm -v $(pwd):/app -v $(pwd)/data:/app/data -it --network syfl-net sentiment-analysis
+docker run --rm -v $(pwd):/app -v $(pwd)/data:/app/data -it sentiment-analysis
 ```
 
 ## Sentiment analysis with logistic regressions

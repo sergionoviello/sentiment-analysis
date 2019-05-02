@@ -11,7 +11,7 @@ RUN pip install --upgrade pip
 RUN pip install flask \
     tensorflow --upgrade
 
-RUN  python3 -m pip install numpy \
+RUN python3 -m pip install numpy \
      scipy \
      nltk \
      scikit-learn \
@@ -19,9 +19,11 @@ RUN  python3 -m pip install numpy \
      jupyter \
      matplotlib \
      pandas \
+     tqdm \
      seaborn \
      ipykernel
 
+RUN python3 -m pip install keras --upgrade
 RUN python3 -m ipykernel install --user
 
 VOLUME /app
